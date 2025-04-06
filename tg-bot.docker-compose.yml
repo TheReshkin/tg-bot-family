@@ -2,8 +2,9 @@ services:
   murmansk-bot:
     image: murmansk-tg:1
     container_name: murmansk-bot
-    env_file: .env
     restart: always
+    volumes:
+      - .env:/app/.env
     networks:
       - bot-network
 
