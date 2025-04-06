@@ -23,7 +23,7 @@ func main() {
 	telegram_token := os.Getenv("TELEGRAM_TOKEN")
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	// 7561415536:AAGKDwqB1EqQWssZmBtWrIuSjo-bbaal6Ug
+
 	opts := []bot.Option{
 		bot.WithDefaultHandler(callbackHandler),
 		bot.WithDefaultHandler(defaultHandler),
