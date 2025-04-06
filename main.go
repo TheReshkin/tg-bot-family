@@ -2,17 +2,17 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"math/rand"
 	"os"
-	"os/signal"
+	"time"
 
 	"github.com/joho/godotenv"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
-
-// Send any text message to the bot after the bot has been started
 
 func main() {
 	err := godotenv.Load()
@@ -21,58 +21,56 @@ func main() {
 	}
 
 	telegram_token := os.Getenv("TELEGRAM_TOKEN")
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
-
-	opts := []bot.Option{
-		bot.WithDefaultHandler(callbackHandler),
-		bot.WithDefaultHandler(defaultHandler),
-	}
-
-	b, err := bot.New(telegram_token, opts...)
+	// Инициализация бота с токеном
+	b, err := bot.New(telegram_token)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	b.Start(ctx)
+	// Регистрируем обработчик команды /murmansk
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/murmansk", bot.MatchTypeExact, murmanskHandler)
+
+	// Запускаем бота
+	b.Start(context.Background())
 }
 
-func callbackHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	// answering callback query first to let Telegram know that we received the callback query,
-	// and we're handling it. Otherwise, Telegram might retry sending the update repetitively
-	// as it thinks the callback query doesn't reach to our application. learn more by
-	// reading the footnote of the https://core.telegram.org/bots/api#callbackquery type.
-	b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
-		CallbackQueryID: update.CallbackQuery.ID,
-		ShowAlert:       false,
-	})
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: update.CallbackQuery.Message.Message.Chat.ID,
-		Text:   "You selected the button: " + update.CallbackQuery.Data,
-	})
-}
+func murmanskHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 
-func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	// Проверка, что update.Message не nil
-	if update.Message == nil {
-		log.Println("defaultHandler: update.Message или update.Message.Chat == nil, пропускаем обработку")
-		return
+	funnyPhrases := []string{
+		"Дамы и господа, на ваших экранах — космический рейс, и время до старта составляет... 🚀⏳",
+		"Забудьте все, что вы знали о времени, вот оно — ваше будущее! 🔮✨",
+		"А тем временем на секундомере… до точки старта осталось всего... ⏱️🔥",
+		"Дамы и господа, если вы хотели узнать, сколько осталось до этого момента — держитесь крепче! Осталось ⏳💥",
+		"Присаживайтесь поудобнее, время до поездки... 🛋️🕒",
+		"Пока мы тут болтаем, до важной даты осталось всего... 🗓️⏳",
+		"Секунды тают, как снег на солнце, до события осталась совсем малость... ❄️☀️",
+		"Представьте, что вы в гонке, и до старта остаётся всего... 🏁⏰",
 	}
 
-	kb := &models.InlineKeyboardMarkup{
-		InlineKeyboard: [][]models.InlineKeyboardButton{
-			{
-				{Text: "Button 1", CallbackData: "button_1"},
-				{Text: "Button 2", CallbackData: "button_2"},
-			}, {
-				{Text: "Button 3", CallbackData: "button_3"},
-			},
-		},
-	}
+	// Целевая дата
+	targetDate := time.Date(2025, time.April, 26, 4, 0, 0, 0, time.UTC)
+	// Текущее время
+	now := time.Now()
 
+	// Рассчитываем время до целевой даты
+	duration := targetDate.Sub(now)
+
+	// Получаем количество дней, часов и минут
+	days := int(duration.Hours()) / 24
+	hours := int(duration.Hours()) % 24
+	minutes := int(duration.Minutes()) % 60
+
+	// Генерируем случайный индекс для фразы
+	rand.Seed(time.Now().Unix())
+	randomPhrase := funnyPhrases[rand.Intn(len(funnyPhrases))]
+
+	// Формируем сообщение с жирным текстом
+	message := fmt.Sprintf("%s\n**%d дней, %d часов, %d минут.**", randomPhrase, days, hours, minutes)
+
+	// Отправляем сообщение в чат
 	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:      update.Message.Chat.ID,
-		Text:        "Нажми на кнопку",
-		ReplyMarkup: kb,
+		ChatID:    update.Message.Chat.ID,
+		Text:      message,
+		ParseMode: "Markdown",
 	})
 }
