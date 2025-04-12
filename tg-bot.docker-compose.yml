@@ -1,12 +1,14 @@
 services:
   murmansk-bot:
-    image: reshkin/murmansk-bot:latest # Используем тег latest, но Watchtower будет проверять обновления
+    image: reshkin/murmansk-bot:latest # Используем тег latest, Watchtower будет проверять обновления
     container_name: murmansk-bot
     restart: always
     volumes:
       - .env:/app/.env
     networks:
       - bot-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true" # Включаем отслеживание для этого контейнера
 
   watchtower:
     image: containrrr/watchtower
@@ -18,7 +20,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - WATCHTOWER_POLL_INTERVAL=30 # Интервал проверки обновлений (в секундах)
-    command: --cleanup # Удаляет старые образы после обновления контейнера
+    command: --cleanup --label-enable # Удаляет старые образы и обновляет только контейнеры с метками
 
 networks:
   bot-network:
