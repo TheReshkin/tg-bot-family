@@ -150,6 +150,17 @@ func listDatesHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	// Загружаем даты из файла
 	chatDates := loadDates()
 
+	// Загружаем часовой пояс Europe/Moscow
+	location, err := time.LoadLocation("Europe/Moscow")
+	if err != nil {
+		log.Printf("Ошибка загрузки часового пояса: %v", err)
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "Ошибка загрузки часового пояса.",
+		})
+		return
+	}
+
 	// Ищем даты для текущего чата
 	for _, chat := range chatDates {
 		if chat.ChatID == update.Message.Chat.ID {
@@ -162,10 +173,10 @@ func listDatesHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			}
 
 			message := "Запланированные даты:\n"
-			now := time.Now()
+			now := time.Now().In(location) // Преобразуем текущее время в Europe/Moscow
 
 			for i, entry := range chat.Dates {
-				parsedDate, err := time.Parse("2006-01-02 15:04", entry.Date)
+				parsedDate, err := time.ParseInLocation("2006-01-02 15:04", entry.Date, location)
 				if err != nil {
 					message += fmt.Sprintf("%d. %s (неверный формат даты)\n", i+1, entry.Date)
 					continue
@@ -220,12 +231,23 @@ func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *models.Update
 	// Загружаем даты из файла
 	chatDates := loadDates()
 
+	// Загружаем часовой пояс Europe/Moscow
+	location, err := time.LoadLocation("Europe/Moscow")
+	if err != nil {
+		log.Printf("Ошибка загрузки часового пояса: %v", err)
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "Ошибка загрузки часового пояса.",
+		})
+		return
+	}
+
 	// Ищем дату с указанным названием
 	for _, chat := range chatDates {
 		if chat.ChatID == update.Message.Chat.ID {
 			for _, entry := range chat.Dates {
 				if entry.Name == name {
-					parsedDate, err := time.Parse("2006-01-02 15:04", entry.Date)
+					parsedDate, err := time.ParseInLocation("2006-01-02 15:04", entry.Date, location)
 					if err != nil {
 						b.SendMessage(ctx, &bot.SendMessageParams{
 							ChatID: update.Message.Chat.ID,
@@ -235,7 +257,7 @@ func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *models.Update
 					}
 
 					// Рассчитываем оставшееся время
-					now := time.Now()
+					now := time.Now().In(location) // Преобразуем текущее время в Europe/Moscow
 					duration := parsedDate.Sub(now)
 					if duration < 0 {
 						b.SendMessage(ctx, &bot.SendMessageParams{
@@ -288,13 +310,13 @@ func updateBotCommands(b *bot.Bot, commands []models.BotCommand) error {
 }
 
 func parseDateWithTimezone(dateTime string) (time.Time, error) {
-	// Загружаем локальный часовой пояс
-	location, err := time.LoadLocation("Local")
+	// Загружаем часовой пояс Europe/Moscow (UTC+3)
+	location, err := time.LoadLocation("Europe/Moscow")
 	if err != nil {
-		return time.Time{}, fmt.Errorf("не удалось загрузить локальный часовой пояс: %v", err)
+		return time.Time{}, fmt.Errorf("не удалось загрузить часовой пояс: %v", err)
 	}
 
-	// Парсим дату с учётом локального часового пояса
+	// Парсим дату с учётом указанного часового пояса
 	parsedDate, err := time.ParseInLocation("2006-01-02 15:04", dateTime, location)
 	if err != nil {
 		// Пробуем парсить только дату без времени
