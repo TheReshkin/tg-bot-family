@@ -27,7 +27,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Регистрируем обработчик команды /murmansk
+	// Устанавливаем подсказки команд
+	commands := []models.BotCommand{
+		{Command: "murmansk", Description: "Узнать, сколько осталось до поездки в Мурманск"},
+		// Добавьте другие команды, если нужно
+	}
+	_, err = b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
+		Commands: commands,
+	})
+	if err != nil {
+		log.Fatalf("Ошибка при установке команд: %v", err)
+	}
+
+	// Регистрируем обработчик команды /murманск
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/murmansk", bot.MatchTypeExact, murmanskHandler)
 
 	// Запускаем бота
@@ -35,6 +47,8 @@ func main() {
 }
 
 func murmanskHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+	// Задаём часовой пояс для Москвы (UTC+3)
+	moscowLocation := time.FixedZone("MSK", 3*60*60)
 
 	funnyPhrases := []string{
 		"Дамы и господа, на ваших экранах — космический рейс, и время до старта составляет... 🚀⏳",
@@ -47,12 +61,16 @@ func murmanskHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		"Представьте, что вы в гонке, и до старта остаётся всего... 🏁⏰",
 	}
 
-	// Целевая дата
-	targetDate := time.Date(2025, time.April, 26, 4, 0, 0, 0, time.UTC)
-	// Текущее время
-	now := time.Now()
+	// Инициализируем генератор случайных чисел один раз
+	rand.Seed(time.Now().Unix())
 
-	// Рассчитываем время до целевой даты
+	// Целевая дата с учётом московского времени
+	targetDate := time.Date(2025, time.April, 26, 0, 0, 0, 0, moscowLocation)
+
+	// Текущее время
+	now := time.Now().In(moscowLocation)
+
+	// Рассчитываем продолжительность до целевой даты
 	duration := targetDate.Sub(now)
 
 	// Получаем количество дней, часов и минут
@@ -61,7 +79,6 @@ func murmanskHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	minutes := int(duration.Minutes()) % 60
 
 	// Генерируем случайный индекс для фразы
-	rand.Seed(time.Now().Unix())
 	randomPhrase := funnyPhrases[rand.Intn(len(funnyPhrases))]
 
 	// Формируем сообщение с жирным текстом

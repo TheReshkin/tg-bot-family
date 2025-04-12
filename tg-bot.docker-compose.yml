@@ -1,6 +1,9 @@
 services:
   murmansk-bot:
-    image: murmansk-tg:1
+    #image: murmansk-tg:1
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: murmansk-bot
     restart: always
     volumes:
