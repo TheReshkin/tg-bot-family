@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+    paths:
+      - main.go # Триггер сборки только при изменении файла main.go
 
 jobs:
   build:
