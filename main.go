@@ -22,6 +22,7 @@ type DateEntry struct {
 	Name string `json:"name"`
 }
 
+// ChatDates хранит даты для конкретного чата
 type ChatDates struct {
 	ChatID int64       `json:"chat_id"`
 	Dates  []DateEntry `json:"dates"`
