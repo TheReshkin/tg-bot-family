@@ -166,8 +166,25 @@ func listDatesHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			}
 
 			message := "Запланированные даты:\n"
-			for _, date := range chat.Dates {
-				message += fmt.Sprintf("- %s\n", date)
+			now := time.Now()
+
+			for i, date := range chat.Dates {
+				parsedDate, err := time.Parse("2006-01-02", date)
+				if err != nil {
+					message += fmt.Sprintf("%d. %s (неверный формат даты)\n", i+1, date)
+					continue
+				}
+
+				// Рассчитываем оставшееся время
+				duration := parsedDate.Sub(now)
+				if duration < 0 {
+					message += fmt.Sprintf("%d. %s (уже прошло)\n", i+1, date)
+				} else {
+					days := int(duration.Hours()) / 24
+					hours := int(duration.Hours()) % 24
+					minutes := int(duration.Minutes()) % 60
+					message += fmt.Sprintf("%d. %s (осталось: %d дней, %d часов, %d минут)\n", i+1, date, days, hours, minutes)
+				}
 			}
 
 			b.SendMessage(ctx, &bot.SendMessageParams{
