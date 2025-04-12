@@ -28,6 +28,8 @@ type ChatDates struct {
 	Dates  []DateEntry `json:"dates"`
 }
 
+var baseCommands []models.BotCommand
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -45,6 +47,14 @@ func main() {
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/murmansk", bot.MatchTypeExact, murmanskHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/setdate", bot.MatchTypePrefix, setDateHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/dates", bot.MatchTypeExact, listDatesHandler)
+
+	// Устанавливаем базовые команды
+	baseCommands := []models.BotCommand{
+		{Command: "murmansk", Description: "Показать время до следующей даты"},
+		{Command: "setdate", Description: "Добавить новую дату (/setdate YYYY-MM-DD [название])"},
+		{Command: "dates", Description: "Показать список всех запланированных дат"},
+	}
+	updateBotCommands(b, baseCommands)
 
 	// Запускаем бота
 	b.Start(context.Background())
@@ -159,6 +169,14 @@ func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		b.RegisterHandler(bot.HandlerTypeMessageText, "/"+name, bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *models.Update) {
 			handleDynamicCommand(ctx, b, update, name)
 		})
+
+		// Добавляем описание для новой команды
+		newCommand := models.BotCommand{
+			Command:     name,
+			Description: fmt.Sprintf("Показать время до события '%s'", name),
+		}
+		baseCommands = append(baseCommands, newCommand)
+		updateBotCommands(b, baseCommands)
 	}
 
 	b.SendMessage(ctx, &bot.SendMessageParams{
@@ -294,5 +312,14 @@ func saveDates(chatDates []ChatDates) {
 	err = json.NewEncoder(file).Encode(chatDates)
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func updateBotCommands(b *bot.Bot, commands []models.BotCommand) {
+	_, err := b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
+		Commands: commands,
+	})
+	if err != nil {
+		log.Printf("Ошибка при обновлении команд: %v", err)
 	}
 }
