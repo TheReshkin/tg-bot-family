@@ -30,4 +30,8 @@ jobs:
       uses: docker/build-push-action@v4
       with:
         push: true
-        tags: reshkin/murmansk-bot:${{ env.BRANCH_NAME }}_${{ env.DATE }}_${{ env.COMMIT_HASH }}
+        tags: reshkin/murmansk-bot:latest # Используем тег latest для загрузки
+        labels: | # Добавляем дату и хэш в лейблы образа
+          org.opencontainers.image.created=${{ env.DATE }}
+          org.opencontainers.image.revision=${{ env.COMMIT_HASH }}
+          org.opencontainers.image.source=${{ github.repository }}

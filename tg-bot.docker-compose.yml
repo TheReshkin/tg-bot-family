@@ -1,15 +1,22 @@
 services:
   murmansk-bot:
-    #image: murmansk-tg:1
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: reshkin/murmansk-bot:latest # Используем тег latest, но Watchtower будет проверять обновления
     container_name: murmansk-bot
     restart: always
     volumes:
       - .env:/app/.env
     networks:
       - bot-network
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=30 # Интервал проверки обновлений (в секундах)
+    command: --cleanup # Удаляет старые образы после обновления контейнера
 
 networks:
   bot-network:
