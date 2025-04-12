@@ -69,7 +69,7 @@ func murmanskHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	for _, chat := range chatDates {
 		if chat.ChatID == update.Message.Chat.ID && len(chat.Dates) > 0 {
 			// Берём первую дату из списка
-			targetDate, _ = time.Parse("2006-01-02", chat.Dates[0].Date)
+			targetDate, _ = time.Parse("2006-01-02 15:04", chat.Dates[0].Date)
 			break
 		}
 	}
@@ -121,19 +121,27 @@ func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if len(parts) < 2 {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
-			Text:   "Используйте формат: /setdate YYYY-MM-DD [название]",
+			Text:   "Используйте формат: /setdate YYYY-MM-DD [HH:MM] [название]",
 		})
 		return
 	}
 
-	date := parts[1]
-	_, err := time.Parse("2006-01-02", date)
+	dateTime := parts[1]
+	if len(parts) > 2 && strings.Contains(parts[2], ":") {
+		dateTime += " " + parts[2]
+		parts = append(parts[:2], parts[3:]...)
+	}
+
+	parsedDate, err := time.Parse("2006-01-02 15:04", dateTime)
 	if err != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: update.Message.Chat.ID,
-			Text:   "Неверный формат даты. Используйте формат: YYYY-MM-DD",
-		})
-		return
+		parsedDate, err = time.Parse("2006-01-02", dateTime)
+		if err != nil {
+			b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID: update.Message.Chat.ID,
+				Text:   "Неверный формат даты. Используйте формат: YYYY-MM-DD [HH:MM]",
+			})
+			return
+		}
 	}
 
 	name := ""
@@ -148,7 +156,7 @@ func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	found := false
 	for i, chat := range chatDates {
 		if chat.ChatID == update.Message.Chat.ID {
-			chatDates[i].Dates = append(chatDates[i].Dates, DateEntry{Date: date, Name: name})
+			chatDates[i].Dates = append(chatDates[i].Dates, DateEntry{Date: parsedDate.Format("2006-01-02 15:04"), Name: name})
 			found = true
 			break
 		}
@@ -157,7 +165,7 @@ func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if !found {
 		chatDates = append(chatDates, ChatDates{
 			ChatID: update.Message.Chat.ID,
-			Dates:  []DateEntry{{Date: date, Name: name}},
+			Dates:  []DateEntry{{Date: parsedDate.Format("2006-01-02 15:04"), Name: name}},
 		})
 	}
 
@@ -166,7 +174,8 @@ func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 
 	// Регистрируем новую команду, если указано название
 	if name != "" {
-		b.RegisterHandler(bot.HandlerTypeMessageText, "/"+name, bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		command := "/" + name
+		b.RegisterHandler(bot.HandlerTypeMessageText, command, bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *models.Update) {
 			handleDynamicCommand(ctx, b, update, name)
 		})
 
@@ -176,7 +185,20 @@ func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			Description: fmt.Sprintf("Показать время до события '%s'", name),
 		}
 		baseCommands = append(baseCommands, newCommand)
-		updateBotCommands(b, baseCommands)
+		err := updateBotCommands(b, baseCommands)
+		if err != nil {
+			b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID: update.Message.Chat.ID,
+				Text:   fmt.Sprintf("Дата добавлена, но команда '%s' не была зарегистрирована: %v", command, err),
+			})
+			return
+		}
+
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   fmt.Sprintf("Дата успешно добавлена! Используйте команду %s для просмотра.", command),
+		})
+		return
 	}
 
 	b.SendMessage(ctx, &bot.SendMessageParams{
@@ -204,7 +226,7 @@ func listDatesHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 			now := time.Now()
 
 			for i, entry := range chat.Dates {
-				parsedDate, err := time.Parse("2006-01-02", entry.Date)
+				parsedDate, err := time.Parse("2006-01-02 15:04", entry.Date)
 				if err != nil {
 					message += fmt.Sprintf("%d. %s (неверный формат даты)\n", i+1, entry.Date)
 					continue
@@ -264,7 +286,7 @@ func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *models.Update
 		if chat.ChatID == update.Message.Chat.ID {
 			for _, entry := range chat.Dates {
 				if entry.Name == name {
-					parsedDate, err := time.Parse("2006-01-02", entry.Date)
+					parsedDate, err := time.Parse("2006-01-02 15:04", entry.Date)
 					if err != nil {
 						b.SendMessage(ctx, &bot.SendMessageParams{
 							ChatID: update.Message.Chat.ID,
@@ -315,11 +337,13 @@ func saveDates(chatDates []ChatDates) {
 	}
 }
 
-func updateBotCommands(b *bot.Bot, commands []models.BotCommand) {
+func updateBotCommands(b *bot.Bot, commands []models.BotCommand) error {
 	_, err := b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
 		Commands: commands,
 	})
 	if err != nil {
 		log.Printf("Ошибка при обновлении команд: %v", err)
+		return err
 	}
+	return nil
 }
