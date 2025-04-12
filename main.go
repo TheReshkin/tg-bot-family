@@ -302,6 +302,7 @@ func saveDates(chatDates []ChatDates) {
 func updateBotCommands(b *bot.Bot, commands []models.BotCommand) error {
 	_, err := b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
 		Commands: commands,
+		Scope:    &models.BotCommandScopeDefault{}, // Указываем, что команды для всех групп
 	})
 	if err != nil {
 		log.Printf("Ошибка при обновлении команд: %v", err)
