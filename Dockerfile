@@ -23,7 +23,10 @@ RUN go build -o murmansk-bot main.go
 FROM alpine:latest
 
 # Устанавливаем необходимые библиотеки
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates tzdata
+
+# Устанавливаем часовой пояс (опционально)
+ENV TZ=Europe/Moscow
 
 # Рабочая директория
 WORKDIR /app
