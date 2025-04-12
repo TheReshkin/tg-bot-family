@@ -10,7 +10,9 @@ services:
 
   watchtower:
     image: containrrr/watchtower
-    container_name: watchtower
+    container_name: watchtower-tg-bot-murmansk
+    depends_on:
+      - murmansk-bot
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
