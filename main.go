@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -44,13 +43,11 @@ func main() {
 	}
 
 	// Регистрируем обработчики команд
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/murmansk", bot.MatchTypeExact, murmanskHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/setdate", bot.MatchTypePrefix, setDateHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/dates", bot.MatchTypeExact, listDatesHandler)
 
 	// Устанавливаем базовые команды
 	baseCommands := []models.BotCommand{
-		{Command: "murmansk", Description: "Показать время до следующей даты"},
 		{Command: "setdate", Description: "Добавить новую дату (/setdate YYYY-MM-DD [название])"},
 		{Command: "dates", Description: "Показать список всех запланированных дат"},
 	}
@@ -58,61 +55,6 @@ func main() {
 
 	// Запускаем бота
 	b.Start(context.Background())
-}
-
-func murmanskHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	// Загружаем даты из файла
-	chatDates := loadDates()
-
-	// Ищем даты для текущего чата
-	var targetDate time.Time
-	for _, chat := range chatDates {
-		if chat.ChatID == update.Message.Chat.ID && len(chat.Dates) > 0 {
-			// Берём первую дату из списка
-			targetDate, _ = time.Parse("2006-01-02 15:04", chat.Dates[0].Date)
-			break
-		}
-	}
-
-	if targetDate.IsZero() {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: update.Message.Chat.ID,
-			Text:   "Дата не установлена. Используйте команду /setdate YYYY-MM-DD для установки даты.",
-		})
-		return
-	}
-
-	// Текущее время
-	now := time.Now()
-
-	// Рассчитываем продолжительность до целевой даты
-	duration := targetDate.Sub(now)
-
-	// Получаем количество дней, часов и минут
-	days := int(duration.Hours()) / 24
-	hours := int(duration.Hours()) % 24
-	minutes := int(duration.Minutes()) % 60
-
-	// Случайные фразы
-	funnyPhrases := []string{
-		"Дамы и господа, на ваших экранах — космический рейс, и время до старта составляет... 🚀⏳",
-		"Забудьте все, что вы знали о времени, вот оно — ваше будущее! 🔮✨",
-		"Секунды тают, как снег на солнце, до события осталась совсем малость... ❄️☀️",
-	}
-
-	// Генерируем случайный индекс для фразы
-	rand.Seed(time.Now().Unix())
-	randomPhrase := funnyPhrases[rand.Intn(len(funnyPhrases))]
-
-	// Формируем сообщение
-	message := fmt.Sprintf("%s\n**%d дней, %d часов, %d минут.**", randomPhrase, days, hours, minutes)
-
-	// Отправляем сообщение
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:    update.Message.Chat.ID,
-		Text:      message,
-		ParseMode: "Markdown",
-	})
 }
 
 func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -132,16 +74,13 @@ func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		parts = append(parts[:2], parts[3:]...)
 	}
 
-	parsedDate, err := time.Parse("2006-01-02 15:04", dateTime)
+	parsedDate, err := parseDateWithTimezone(dateTime)
 	if err != nil {
-		parsedDate, err = time.Parse("2006-01-02", dateTime)
-		if err != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID: update.Message.Chat.ID,
-				Text:   "Неверный формат даты. Используйте формат: YYYY-MM-DD [HH:MM]",
-			})
-			return
-		}
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "Неверный формат даты. Используйте формат: YYYY-MM-DD [HH:MM]",
+		})
+		return
 	}
 
 	name := ""
@@ -346,4 +285,24 @@ func updateBotCommands(b *bot.Bot, commands []models.BotCommand) error {
 		return err
 	}
 	return nil
+}
+
+func parseDateWithTimezone(dateTime string) (time.Time, error) {
+	// Загружаем локальный часовой пояс
+	location, err := time.LoadLocation("Local")
+	if err != nil {
+		return time.Time{}, fmt.Errorf("не удалось загрузить локальный часовой пояс: %v", err)
+	}
+
+	// Парсим дату с учётом локального часового пояса
+	parsedDate, err := time.ParseInLocation("2006-01-02 15:04", dateTime, location)
+	if err != nil {
+		// Пробуем парсить только дату без времени
+		parsedDate, err = time.ParseInLocation("2006-01-02", dateTime, location)
+		if err != nil {
+			return time.Time{}, err
+		}
+	}
+
+	return parsedDate, nil
 }
