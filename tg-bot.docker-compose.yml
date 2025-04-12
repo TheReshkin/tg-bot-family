@@ -5,6 +5,7 @@ services:
     restart: always
     volumes:
       - .env:/app/.env
+      - ./dates.json:/app/dates.json # Монтируем файл dates.json на хост
     networks:
       - bot-network
     labels:
