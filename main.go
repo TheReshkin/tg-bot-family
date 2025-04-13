@@ -16,7 +16,7 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-const datesFile = "dates.json"
+const datesFile = "./data/dates.json"
 
 type DateEntry struct {
 	Date string `json:"date"`
@@ -373,6 +373,14 @@ func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *models.Update
 }
 
 func saveDates(chatDates []ChatDates) {
+	// Создаём папку ./data/, если её нет
+	if _, err := os.Stat("./data"); os.IsNotExist(err) {
+		err := os.Mkdir("./data", os.ModePerm)
+		if err != nil {
+			log.Fatalf("Не удалось создать папку ./data/: %v", err)
+		}
+	}
+
 	file, err := os.Create(datesFile)
 	if err != nil {
 		log.Fatal(err)
