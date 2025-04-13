@@ -43,8 +43,19 @@ func main() {
 		log.Fatal(err)
 	}
 
+	botName := ""
+	me, err := b.GetMe(context.Background())
+	if err != nil {
+		log.Fatalf("Не удалось получить информацию о боте: %v", err)
+	} else {
+		botName = me.Username
+		log.Printf("Имя бота: %s", botName)
+	}
+
 	// Регистрируем обработчики команд
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/setdate", bot.MatchTypePrefix, setDateHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/setdate", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		setDateHandler(ctx, b, update, botName)
+	})
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/dates", bot.MatchTypeExact, listDatesHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "*", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		if update.Message == nil || !isCommand(update.Message.Text) {
@@ -54,23 +65,31 @@ func main() {
 		// Нормализуем команду
 		command := normalizeCommand(update.Message.Text)
 
-		// Обрабатываем команды
+		// Логируем нормализованную команду
+		log.Printf("Получена команда: %s", update.Message.Text)
+		log.Printf("Нормализованная команда: %s", command)
+
+		// Обрабатываем стандартные команды
 		switch command {
 		case "/setdate":
-			setDateHandler(ctx, b, update)
+			setDateHandler(ctx, b, update, botName)
+			return
 		case "/dates":
 			listDatesHandler(ctx, b, update)
-		default:
-			// Для динамических команд
-			for _, cmd := range baseCommands {
-				if command == "/"+cmd.Command {
-					handleDynamicCommand(ctx, b, update, cmd.Command)
-					return
-				}
-			}
-			log.Printf("Неизвестная команда: %s", command)
-			fmt.Printf("Неизвестная команда: %s\n", command)
+			return
 		}
+
+		// Обрабатываем кастомные команды с учётом имени бота
+		for _, cmd := range baseCommands {
+			fullCommand := "/" + cmd.Command + "@" + botName
+			if command == "/"+cmd.Command || command == fullCommand {
+				handleDynamicCommand(ctx, b, update, cmd.Command)
+				return
+			}
+		}
+
+		log.Printf("Неизвестная команда: %s", command)
+		fmt.Printf("Неизвестная команда: %s\n", command)
 	})
 
 	// Устанавливаем базовые команды
@@ -82,9 +101,9 @@ func main() {
 
 	// Запускаем бота
 	b.Start(context.Background())
+	// Removed incomplete function declaration
 }
-
-func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update, botName string) {
 	// Проверяем, является ли сообщение командой
 	if update.Message == nil || !isCommand(update.Message.Text) {
 		return
@@ -136,10 +155,11 @@ func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	// Регистрируем новую команду, если указано название
 	if name != "" {
 		command := "/" + name
-		log.Printf("Регистрируется команда: %s", command)
-		fmt.Printf("Регистрируется команда: %s\n", command)
+		fullCommand := command + "@" + botName // Команда с именем бота
+		log.Printf("Регистрируется команда: %s", fullCommand)
+		fmt.Printf("Регистрируется команда: %s\n", fullCommand)
 
-		b.RegisterHandler(bot.HandlerTypeMessageText, normalizeCommand(command), bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		b.RegisterHandler(bot.HandlerTypeMessageText, fullCommand, bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *models.Update) {
 			handleDynamicCommand(ctx, b, update, name)
 		})
 
@@ -155,14 +175,14 @@ func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 		if err != nil {
 			sendMessage(ctx, b, &bot.SendMessageParams{
 				ChatID: update.Message.Chat.ID,
-				Text:   fmt.Sprintf("Дата добавлена, но команда '%s' не была зарегистрирована: %v", command, err),
+				Text:   fmt.Sprintf("Дата добавлена, но команда '%s' не была зарегистрирована: %v", fullCommand, err),
 			})
 			return
 		}
 
 		sendMessage(ctx, b, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
-			Text:   fmt.Sprintf("Дата успешно добавлена! Используйте команду %s для просмотра.", command),
+			Text:   fmt.Sprintf("Дата успешно добавлена! Используйте команду %s для просмотра.", fullCommand),
 		})
 		return
 	}
