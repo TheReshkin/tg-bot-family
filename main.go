@@ -72,13 +72,11 @@ func main() {
 			fmt.Printf("Неизвестная команда: %s\n", command)
 		}
 	})
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/murmansk2", bot.MatchTypePrefix, murmansk2Handler)
 
 	// Устанавливаем базовые команды
 	baseCommands := []models.BotCommand{
 		{Command: "setdate", Description: "Добавить новую дату (/setdate YYYY-MM-DD [название])"},
 		{Command: "dates", Description: "Показать список всех запланированных дат"},
-		{Command: "murmansk2", Description: "Показать время до события murmansk2"},
 	}
 	updateBotCommands(b, baseCommands)
 
@@ -326,9 +324,10 @@ func saveDates(chatDates []ChatDates) {
 }
 
 func updateBotCommands(b *bot.Bot, commands []models.BotCommand) error {
+	// Устанавливаем команды только для личных чатов
 	_, err := b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
 		Commands: commands,
-		Scope:    &models.BotCommandScopeAllGroupChats{}, // Для всех групп
+		Scope:    &models.BotCommandScopeDefault{}, // Применяем команды только для личных чатов
 	})
 	if err != nil {
 		log.Printf("Ошибка при обновлении команд: %v", err)
@@ -336,8 +335,8 @@ func updateBotCommands(b *bot.Bot, commands []models.BotCommand) error {
 		return err
 	}
 
-	log.Printf("Команды успешно обновлены.")
-	fmt.Printf("Команды успешно обновлены.\n") // Дублируем вывод
+	log.Printf("Команды успешно обновлены для личных чатов.")
+	fmt.Printf("Команды успешно обновлены для личных чатов.\n") // Дублируем вывод
 	return nil
 }
 
@@ -412,62 +411,4 @@ func sendMessage(ctx context.Context, b *bot.Bot, params *bot.SendMessageParams)
 	if err != nil {
 		log.Printf("Ошибка отправки сообщения: %v", err)
 	}
-}
-
-func murmansk2Handler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	// Загружаем даты из файла
-	chatDates := loadDates()
-
-	// Загружаем часовой пояс Europe/Moscow
-	location, err := time.LoadLocation("Europe/Moscow")
-	if err != nil {
-		log.Printf("Ошибка загрузки часового пояса: %v", err)
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: update.Message.Chat.ID,
-			Text:   "Ошибка загрузки часового пояса.",
-		})
-		return
-	}
-
-	// Ищем даты для текущего чата
-	for _, chat := range chatDates {
-		if chat.ChatID == update.Message.Chat.ID {
-			for _, entry := range chat.Dates {
-				if entry.Name == "murmansk2" {
-					parsedDate, err := time.ParseInLocation("2006-01-02 15:04", entry.Date, location)
-					if err != nil {
-						b.SendMessage(ctx, &bot.SendMessageParams{
-							ChatID: update.Message.Chat.ID,
-							Text:   "Ошибка: неверный формат даты.",
-						})
-						return
-					}
-
-					// Рассчитываем оставшееся время
-					now := time.Now().In(location)
-					duration := parsedDate.Sub(now)
-					if duration < 0 {
-						b.SendMessage(ctx, &bot.SendMessageParams{
-							ChatID: update.Message.Chat.ID,
-							Text:   fmt.Sprintf("Дата murmansk2 (%s) уже прошла.", entry.Date),
-						})
-					} else {
-						days := int(duration.Hours()) / 24
-						hours := int(duration.Hours()) % 24
-						minutes := int(duration.Minutes()) % 60
-						b.SendMessage(ctx, &bot.SendMessageParams{
-							ChatID: update.Message.Chat.ID,
-							Text:   fmt.Sprintf("До события murmansk2 (%s) осталось: %d дней, %d часов, %d минут.", entry.Date, days, hours, minutes),
-						})
-					}
-					return
-				}
-			}
-		}
-	}
-
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   "Событие murmansk2 не найдено.",
-	})
 }
