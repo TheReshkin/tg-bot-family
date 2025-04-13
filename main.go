@@ -31,17 +31,6 @@ type ChatDates struct {
 
 var baseCommands []models.BotCommand
 
-var funnyPhrases = []string{
-	"Дамы и господа, на ваших экранах — космический рейс, и время до старта составляет... 🚀⏳",
-	"Забудьте все, что вы знали о времени, вот оно — ваше будущее! 🔮✨",
-	"А тем временем на секундомере… до точки старта осталось всего... ⏱️🔥",
-	"Дамы и господа, если вы хотели узнать, сколько осталось до этого момента — держитесь крепче! Осталось ⏳💥",
-	"Присаживайтесь поудобнее, время до поездки... 🛋️🕒",
-	"Пока мы тут болтаем, до важной даты осталось всего... 🗓️⏳",
-	"Секунды тают, как снег на солнце, до события осталась совсем малость... ❄️☀️",
-	"Представьте, что вы в гонке, и до старта остаётся всего... 🏁⏰",
-}
-
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -69,6 +58,12 @@ func main() {
 		setDateHandler(ctx, b, update, botName)
 	})
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/dates", bot.MatchTypeExact, listDatesHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/dates", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		listDatesHandler(ctx, b, update)
+	})
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/dates@"+botName, bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		listDatesHandler(ctx, b, update)
+	})
 	b.RegisterHandler(bot.HandlerTypeMessageText, "*", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		if update.Message == nil || !isCommand(update.Message.Text) {
 			return // Игнорируем сообщения, которые не являются командами
@@ -86,7 +81,7 @@ func main() {
 		case "/setdate":
 			setDateHandler(ctx, b, update, botName)
 			return
-		case "/dates":
+		case "/dates", "/dates@" + botName: // Учитываем оба варианта команды
 			listDatesHandler(ctx, b, update)
 			return
 		}
@@ -113,10 +108,12 @@ func main() {
 
 	// Запускаем бота
 	b.Start(context.Background())
-	// Removed incomplete function declaration
+	updateBotCommands(b, baseCommands)
 
 	// Инициализация генератора случайных чисел
 	rand.Seed(time.Now().UnixNano())
+	updateBotCommands(b, baseCommands)
+	updateBotCommands(b, baseCommands)
 }
 func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update, botName string) {
 	// Проверяем, является ли сообщение командой
@@ -389,19 +386,16 @@ func saveDates(chatDates []ChatDates) {
 }
 
 func updateBotCommands(b *bot.Bot, commands []models.BotCommand) error {
-	// Устанавливаем команды только для личных чатов
 	_, err := b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
 		Commands: commands,
-		Scope:    &models.BotCommandScopeDefault{}, // Применяем команды только для личных чатов
+		Scope:    &models.BotCommandScopeAllGroupChats{}, // Применяем команды для всех групп
 	})
 	if err != nil {
 		log.Printf("Ошибка при обновлении команд: %v", err)
-		fmt.Printf("Ошибка при обновлении команд: %v\n", err) // Дублируем вывод
 		return err
 	}
 
-	log.Printf("Команды успешно обновлены для личных чатов.")
-	fmt.Printf("Команды успешно обновлены для личных чатов.\n") // Дублируем вывод
+	log.Printf("Команды успешно обновлены для всех чатов.")
 	return nil
 }
 
@@ -423,18 +417,6 @@ func parseDateWithTimezone(dateTime string) (time.Time, error) {
 	}
 
 	return parsedDate, nil
-}
-
-func addCommandIfNotExists(name string, description string) {
-	for _, cmd := range baseCommands {
-		if cmd.Command == name {
-			return // Команда уже существует
-		}
-	}
-	baseCommands = append(baseCommands, models.BotCommand{
-		Command:     name,
-		Description: description,
-	})
 }
 
 func normalizeCommand(command string) string {
