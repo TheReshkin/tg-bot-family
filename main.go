@@ -334,20 +334,32 @@ func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *models.Update
 							Text:   fmt.Sprintf("Дата %s (%s) уже прошла.", entry.Name, entry.Date),
 						})
 					} else {
-						days := int(duration.Hours()) / 24
-						hours := int(duration.Hours()) % 24
+						totalHours := int(duration.Hours())
+						days := totalHours / 24
+						hours := totalHours % 24
 						minutes := int(duration.Minutes()) % 60
 
 						// Форматируем вывод
 						var timeParts []string
-						if days > 0 {
-							timeParts = append(timeParts, fmt.Sprintf("%d дней", days))
-						}
-						if hours > 0 {
-							timeParts = append(timeParts, fmt.Sprintf("%d часов", hours))
-						}
-						if minutes > 0 {
-							timeParts = append(timeParts, fmt.Sprintf("%d минут", minutes))
+						if days >= 3 {
+							if days > 0 {
+								timeParts = append(timeParts, fmt.Sprintf("%d дней", days))
+							}
+							if hours > 0 {
+								timeParts = append(timeParts, fmt.Sprintf("%d часов", hours))
+							}
+							if minutes > 0 {
+								timeParts = append(timeParts, fmt.Sprintf("%d минут", minutes))
+							}
+						} else {
+							// Если осталось меньше 3 дней, преобразуем дни в часы
+							remainingHours := totalHours
+							if remainingHours > 0 {
+								timeParts = append(timeParts, fmt.Sprintf("%d часов", remainingHours))
+							}
+							if minutes > 0 {
+								timeParts = append(timeParts, fmt.Sprintf("%d минут", minutes))
+							}
 						}
 
 						timeLeft := strings.Join(timeParts, ", ")
