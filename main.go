@@ -106,6 +106,9 @@ func main() {
 	}
 	updateBotCommands(b, baseCommands)
 
+	// Регистрируем динамические команды из файла dates.json
+	registerDynamicCommandsFromFile(b, botName)
+
 	// Запускаем бота
 	b.Start(context.Background())
 	updateBotCommands(b, baseCommands)
@@ -114,6 +117,9 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	updateBotCommands(b, baseCommands)
 	updateBotCommands(b, baseCommands)
+
+	// Регистрируем динамические команды
+	registerDynamicCommands(b, botName)
 }
 func setDateHandler(ctx context.Context, b *bot.Bot, update *models.Update, botName string) {
 	// Проверяем, является ли сообщение командой
@@ -341,7 +347,7 @@ func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *models.Update
 
 						// Форматируем вывод
 						var timeParts []string
-						if days >= 3 {
+						if days >= 4 {
 							if days > 0 {
 								timeParts = append(timeParts, fmt.Sprintf("%d дней", days))
 							}
@@ -477,5 +483,68 @@ func sendMessage(ctx context.Context, b *bot.Bot, params *bot.SendMessageParams)
 	_, err := b.SendMessage(ctx, params)
 	if err != nil {
 		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+}
+
+func registerDynamicCommands(b *bot.Bot, botName string) {
+	chatDates := loadDates()
+
+	for _, chat := range chatDates {
+		for _, entry := range chat.Dates {
+			if entry.Name != "" {
+				command := "/" + entry.Name
+				fullCommand := command + "@" + botName // Команда с именем бота
+
+				// Регистрируем обработчик для команды
+				b.RegisterHandler(bot.HandlerTypeMessageText, fullCommand, bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *models.Update) {
+					handleDynamicCommand(ctx, b, update, entry.Name)
+				})
+
+				// Добавляем описание для команды
+				newCommand := models.BotCommand{
+					Command:     entry.Name,
+					Description: fmt.Sprintf("Показать время до события '%s'", entry.Name),
+				}
+				baseCommands = append(baseCommands, newCommand)
+			}
+		}
+	}
+
+	// Обновляем команды в Telegram
+	err := updateBotCommands(b, baseCommands)
+	if err != nil {
+		log.Printf("Ошибка при обновлении динамических команд: %v", err)
+	}
+}
+
+func registerDynamicCommandsFromFile(b *bot.Bot, botName string) {
+	chatDates := loadDates()
+
+	for _, chat := range chatDates {
+		for _, entry := range chat.Dates {
+			// Проверяем, что имя команды не пустое
+			if entry.Name != "" {
+				command := "/" + entry.Name
+				fullCommand := command + "@" + botName // Команда с именем бота
+
+				// Регистрируем обработчик для команды
+				b.RegisterHandler(bot.HandlerTypeMessageText, fullCommand, bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *models.Update) {
+					handleDynamicCommand(ctx, b, update, entry.Name)
+				})
+
+				// Добавляем описание для команды
+				newCommand := models.BotCommand{
+					Command:     entry.Name,
+					Description: fmt.Sprintf("Показать время до события '%s'", entry.Name),
+				}
+				baseCommands = append(baseCommands, newCommand)
+			}
+		}
+	}
+
+	// Обновляем команды в Telegram
+	err := updateBotCommands(b, baseCommands)
+	if err != nil {
+		log.Printf("Ошибка при обновлении динамических команд: %v", err)
 	}
 }
