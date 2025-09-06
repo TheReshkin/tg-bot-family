@@ -66,7 +66,9 @@ func (s *EventService) ListEvents(chatID int64) ([]models.Event, error) {
 	events, err := s.store.GetEvents(chatID)
 	if err != nil {
 		s.logger.Error("Ошибка получения событий", zap.Error(err))
+		return nil, err
 	}
+	s.logger.Debug("Найдено событий", zap.Int("count", len(events)))
 	return events, err
 }
 

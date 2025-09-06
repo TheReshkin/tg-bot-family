@@ -154,10 +154,20 @@ func handleList(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventS
 		return
 	}
 
+	// Получаем события из текущего чата
 	events, err := eventService.ListEvents(update.Message.Chat.ID)
 	if err != nil {
 		sendMessage(ctx, b, update.Message.Chat.ID, "Ошибка при получении событий")
 		return
+	}
+
+	// Если это не тестовый чат, добавляем события из тестового чата
+	const testChatID int64 = 332288278
+	if update.Message.Chat.ID != testChatID {
+		testEvents, err := eventService.ListEvents(testChatID)
+		if err == nil {
+			events = append(events, testEvents...)
+		}
 	}
 
 	if len(events) == 0 {
@@ -173,7 +183,7 @@ func handleList(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventS
 }
 
 func handleAll(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService) {
-	handleList(ctx, b, update, eventService) // Пока то же самое
+	handleList(ctx, b, update, eventService) // Показывает все события из текущего и тестового чатов
 }
 
 func handleActive(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService) {
@@ -181,10 +191,20 @@ func handleActive(ctx context.Context, b *bot.Bot, update *tgmodels.Update, even
 		return
 	}
 
+	// Получаем события из текущего чата
 	events, err := eventService.ListEvents(update.Message.Chat.ID)
 	if err != nil {
 		sendMessage(ctx, b, update.Message.Chat.ID, "Ошибка при получении событий")
 		return
+	}
+
+	// Если это не тестовый чат, добавляем события из тестового чата
+	const testChatID int64 = 332288278
+	if update.Message.Chat.ID != testChatID {
+		testEvents, err := eventService.ListEvents(testChatID)
+		if err == nil {
+			events = append(events, testEvents...)
+		}
 	}
 
 	activeEvents := []models.Event{}
@@ -211,10 +231,20 @@ func handleOutdated(ctx context.Context, b *bot.Bot, update *tgmodels.Update, ev
 		return
 	}
 
+	// Получаем события из текущего чата
 	events, err := eventService.ListEvents(update.Message.Chat.ID)
 	if err != nil {
 		sendMessage(ctx, b, update.Message.Chat.ID, "Ошибка при получении событий")
 		return
+	}
+
+	// Если это не тестовый чат, добавляем события из тестового чата
+	const testChatID int64 = 332288278
+	if update.Message.Chat.ID != testChatID {
+		testEvents, err := eventService.ListEvents(testChatID)
+		if err == nil {
+			events = append(events, testEvents...)
+		}
 	}
 
 	outdatedEvents := []models.Event{}
@@ -281,7 +311,20 @@ func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *tgmodels.Upda
 	logger.Info("Поиск события",
 		zap.String("event_name", name),
 		zap.Int64("chat_id", update.Message.Chat.ID))
+
+	// Сначала ищем в текущем чате
 	event, err := eventService.GetEvent(update.Message.Chat.ID, name)
+	if err != nil {
+		// Если не найдено в текущем чате, ищем в тестовом чате (332288278)
+		const testChatID int64 = 332288278
+		if update.Message.Chat.ID != testChatID {
+			logger.Info("Событие не найдено в текущем чате, ищем в тестовом",
+				zap.String("event_name", name),
+				zap.Int64("test_chat_id", testChatID))
+			event, err = eventService.GetEvent(testChatID, name)
+		}
+	}
+
 	if err != nil {
 		logger.Warn("Событие не найдено",
 			zap.String("event_name", name),
@@ -293,8 +336,9 @@ func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *tgmodels.Upda
 	logger.Info("Найдено событие",
 		zap.String("event_name", event.Name),
 		zap.String("date", event.Date))
-	// Обновление статуса
-	eventService.UpdateEventStatus(update.Message.Chat.ID, name)
+
+	// Обновление статуса события в его чате
+	eventService.UpdateEventStatus(event.ChatID, name)
 
 	// Расчёт времени до события
 	parsedDate, err := models.ParseEventDate(event.Date)
@@ -330,13 +374,6 @@ func sendMessage(ctx context.Context, b *bot.Bot, chatID int64, text string) {
 }
 
 func loadExistingCommands(b *bot.Bot, eventService *services.EventService) {
-	// Загрузка всех событий из всех чатов
-	events, err := eventService.GetAllEvents()
-	if err != nil {
-		logger.Error("Ошибка при загрузке событий", zap.Error(err))
-		return
-	}
-
 	commands := []tgmodels.BotCommand{
 		{Command: "set_date", Description: "Добавить событие (/set_date DD.MM.YYYY name)"},
 		{Command: "list", Description: "Список событий"},
@@ -346,16 +383,8 @@ func loadExistingCommands(b *bot.Bot, eventService *services.EventService) {
 		{Command: "help", Description: "Справка"},
 	}
 
-	// Добавление динамических команд из storage
-	for _, event := range events {
-		commands = append(commands, tgmodels.BotCommand{
-			Command:     event.Name,
-			Description: fmt.Sprintf("Информация о событии '%s'", event.Name),
-		})
-	}
-
-	logger.Info("Устанавливаем команды", zap.Int("count", len(commands)))
-	_, err = b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
+	logger.Info("Устанавливаем базовые команды", zap.Int("count", len(commands)))
+	_, err := b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
 		Commands: commands,
 	})
 	if err != nil {
@@ -366,39 +395,7 @@ func loadExistingCommands(b *bot.Bot, eventService *services.EventService) {
 }
 
 func registerDynamicCommand(b *bot.Bot, eventService *services.EventService, name string) {
-	// Получение всех событий
-	events, err := eventService.GetAllEvents()
-	if err != nil {
-		logger.Error("Ошибка при получении событий", zap.Error(err))
-		return
-	}
-
-	commands := []tgmodels.BotCommand{
-		{Command: "set_date", Description: "Добавить событие (/set_date DD.MM.YYYY name)"},
-		{Command: "list", Description: "Список событий"},
-		{Command: "all", Description: "Все события"},
-		{Command: "active", Description: "Активные события"},
-		{Command: "outdated", Description: "Устаревшие события"},
-		{Command: "help", Description: "Справка"},
-	}
-
-	// Добавление всех событий как команд
-	for _, event := range events {
-		commands = append(commands, tgmodels.BotCommand{
-			Command:     event.Name,
-			Description: fmt.Sprintf("Информация о событии '%s'", event.Name),
-		})
-	}
-
-	logger.Info("Обновляем команды после добавления события",
-		zap.String("event_name", name),
-		zap.Int("total_commands", len(commands)))
-	_, err = b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
-		Commands: commands,
-	})
-	if err != nil {
-		logger.Error("Ошибка при обновлении динамических команд", zap.Error(err))
-	} else {
-		logger.Info("Динамические команды успешно обновлены")
-	}
+	logger.Info("Динамическая команда зарегистрирована локально",
+		zap.String("event_name", name))
+	// Больше не регистрируем глобальные команды - обрабатываем динамически
 }

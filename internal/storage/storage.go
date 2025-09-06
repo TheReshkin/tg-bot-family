@@ -140,6 +140,7 @@ func (s *JSONStorage) GetEvent(chatID int64, name string) (*models.Event, error)
 		return nil, err
 	}
 
+	// Сначала ищем в указанном чате
 	for _, chat := range data {
 		if chat.ChatID == chatID {
 			for _, event := range chat.Events {
@@ -149,6 +150,16 @@ func (s *JSONStorage) GetEvent(chatID int64, name string) (*models.Event, error)
 			}
 		}
 	}
+
+	// Если не нашли в указанном чате, ищем во всех чатах
+	for _, chat := range data {
+		for _, event := range chat.Events {
+			if event.Name == name {
+				return &event, nil
+			}
+		}
+	}
+
 	return nil, errors.New("event not found")
 }
 
