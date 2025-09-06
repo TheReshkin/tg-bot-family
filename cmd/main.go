@@ -299,7 +299,17 @@ func handleDynamicOrUnknown(ctx context.Context, b *bot.Bot, update *tgmodels.Up
 		parts := strings.Split(command, "@")
 		command = parts[0]
 	}
-	logger.Info("Обработка команды", zap.String("command", command))
+
+	// Проверяем, является ли команда системной
+	systemCommands := []string{"set_date", "list", "all", "active", "outdated", "help", "start"}
+	for _, sysCmd := range systemCommands {
+		if command == sysCmd {
+			logger.Debug("Системная команда, пропускаем", zap.String("command", command))
+			return
+		}
+	}
+
+	logger.Info("Обработка динамической команды", zap.String("command", command))
 	handleDynamicCommand(ctx, b, update, command, eventService)
 }
 
