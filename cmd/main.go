@@ -1,0 +1,404 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/TheReshkin/tg-bot-family/internal/models"
+	"github.com/TheReshkin/tg-bot-family/internal/services"
+	"github.com/TheReshkin/tg-bot-family/internal/storage"
+	"github.com/go-telegram/bot"
+	tgmodels "github.com/go-telegram/bot/models"
+	"github.com/joho/godotenv"
+	"go.uber.org/zap"
+)
+
+var logger *zap.Logger
+
+func main() {
+	// Инициализация логгера
+	var err error
+	logger, err = zap.NewProduction()
+	if err != nil {
+		log.Fatalf("Не удалось инициализировать логгер: %v", err)
+	}
+	defer logger.Sync()
+
+	err = godotenv.Load()
+	if err != nil {
+		logger.Error("Ошибка при загрузке .env файла", zap.Error(err))
+	}
+
+	telegramToken := os.Getenv("TELEGRAM_TOKEN")
+	if telegramToken == "" {
+		logger.Fatal("TELEGRAM_TOKEN не задан")
+	}
+
+	// Инициализация бота
+	b, err := bot.New(telegramToken)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Получение имени бота
+	me, err := b.GetMe(context.Background())
+	if err != nil {
+		logger.Fatal("Не удалось получить информацию о боте", zap.Error(err))
+	}
+	botName := me.Username
+	logger.Info("Бот инициализирован", zap.String("bot_name", botName))
+
+	// Инициализация storage и сервисов
+	store := storage.NewJSONStorage()
+	eventService := services.NewEventService(store)
+	userService := services.NewUserService(store)
+
+	// Загрузка существующих команд
+	loadExistingCommands(b, eventService)
+
+	// Регистрация команд
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/set_date", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+		handleSetDate(ctx, b, update, eventService, userService)
+	})
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/list", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+		handleList(ctx, b, update, eventService)
+	})
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/all", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+		handleAll(ctx, b, update, eventService)
+	})
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/active", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+		handleActive(ctx, b, update, eventService)
+	})
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/outdated", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+		handleOutdated(ctx, b, update, eventService)
+	})
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/help", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+		handleHelp(ctx, b, update)
+	})
+
+	// Обработчик для динамических команд - регистрируем последним
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+		handleDynamicOrUnknown(ctx, b, update, eventService)
+	})
+
+	// Запуск бота
+	logger.Info("Бот запущен")
+	b.Start(context.Background())
+}
+
+func handleSetDate(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService, userService *services.UserService) {
+	if update.Message == nil {
+		return
+	}
+
+	parts := strings.Fields(update.Message.Text)
+	if len(parts) < 3 {
+		sendMessage(ctx, b, update.Message.Chat.ID, "Используйте формат:\n/set_date YYYY-MM-DD HH:MM event_name [description]\n/set_date YYYY-MM-DD event_name [description]\n/set_date DD.MM.YYYY event_name [description]")
+		return
+	}
+
+	var dateStr, name, description string
+
+	// Проверяем, является ли вторая часть времени (HH:MM)
+	if len(parts) >= 4 && regexp.MustCompile(`^\d{1,2}:\d{2}$`).MatchString(parts[2]) {
+		// Формат: /set_date YYYY-MM-DD HH:MM name [desc]
+		dateStr = parts[1] + " " + parts[2]
+		name = parts[3]
+		if len(parts) > 4 {
+			description = strings.Join(parts[4:], " ")
+		}
+	} else {
+		// Формат: /set_date YYYY-MM-DD name [desc] или /set_date DD.MM.YYYY name [desc]
+		dateStr = parts[1]
+		name = parts[2]
+		if len(parts) > 3 {
+			description = strings.Join(parts[3:], " ")
+		}
+	}
+
+	// Парсинг и валидация даты
+	parsedDate, err := models.ParseEventDate(dateStr)
+	if err != nil {
+		sendMessage(ctx, b, update.Message.Chat.ID, fmt.Sprintf("Ошибка парсинга даты: %s", err.Error()))
+		return
+	}
+
+	// Преобразование в новый формат для хранения
+	formattedDate := models.FormatEventDate(parsedDate)
+
+	err = eventService.CreateEvent(update.Message.Chat.ID, name, formattedDate, description)
+	if err != nil {
+		sendMessage(ctx, b, update.Message.Chat.ID, fmt.Sprintf("Ошибка: %s", err.Error()))
+		return
+	}
+
+	// Регистрация динамической команды
+	registerDynamicCommand(b, eventService, name)
+
+	// Добавление события к пользователю
+	event, _ := eventService.GetEvent(update.Message.Chat.ID, name)
+	if event != nil {
+		userService.AddEventToUser(update.Message.Chat.ID, update.Message.From.ID, *event)
+	}
+
+	sendMessage(ctx, b, update.Message.Chat.ID, fmt.Sprintf("Событие '%s' добавлено! Используйте /%s для информации.", name, name))
+}
+
+func handleList(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService) {
+	if update.Message == nil {
+		return
+	}
+
+	events, err := eventService.ListEvents(update.Message.Chat.ID)
+	if err != nil {
+		sendMessage(ctx, b, update.Message.Chat.ID, "Ошибка при получении событий")
+		return
+	}
+
+	if len(events) == 0 {
+		sendMessage(ctx, b, update.Message.Chat.ID, "Нет событий")
+		return
+	}
+
+	message := "События:\n"
+	for _, event := range events {
+		message += fmt.Sprintf("- %s: %s (команда /%s)\n", event.Name, event.Date, event.Name)
+	}
+	sendMessage(ctx, b, update.Message.Chat.ID, message)
+}
+
+func handleAll(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService) {
+	handleList(ctx, b, update, eventService) // Пока то же самое
+}
+
+func handleActive(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService) {
+	if update.Message == nil {
+		return
+	}
+
+	events, err := eventService.ListEvents(update.Message.Chat.ID)
+	if err != nil {
+		sendMessage(ctx, b, update.Message.Chat.ID, "Ошибка при получении событий")
+		return
+	}
+
+	activeEvents := []models.Event{}
+	for _, event := range events {
+		if event.Status == models.StatusActive {
+			activeEvents = append(activeEvents, event)
+		}
+	}
+
+	if len(activeEvents) == 0 {
+		sendMessage(ctx, b, update.Message.Chat.ID, "Нет активных событий")
+		return
+	}
+
+	message := "Активные события:\n"
+	for _, event := range activeEvents {
+		message += fmt.Sprintf("- %s: %s\n", event.Name, event.Date)
+	}
+	sendMessage(ctx, b, update.Message.Chat.ID, message)
+}
+
+func handleOutdated(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService) {
+	if update.Message == nil {
+		return
+	}
+
+	events, err := eventService.ListEvents(update.Message.Chat.ID)
+	if err != nil {
+		sendMessage(ctx, b, update.Message.Chat.ID, "Ошибка при получении событий")
+		return
+	}
+
+	outdatedEvents := []models.Event{}
+	for _, event := range events {
+		if event.Status == models.StatusOutdated {
+			outdatedEvents = append(outdatedEvents, event)
+		}
+	}
+
+	if len(outdatedEvents) == 0 {
+		sendMessage(ctx, b, update.Message.Chat.ID, "Нет устаревших событий")
+		return
+	}
+
+	message := "Устаревшие события:\n"
+	for _, event := range outdatedEvents {
+		message += fmt.Sprintf("- %s: %s\n", event.Name, event.Date)
+	}
+	sendMessage(ctx, b, update.Message.Chat.ID, message)
+}
+
+func handleHelp(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+	if update.Message == nil {
+		return
+	}
+
+	helpText := `Команды:
+/set_date YYYY-MM-DD HH:MM event_name [description] - добавить событие с временем
+/set_date YYYY-MM-DD event_name [description] - добавить событие (время 00:00)
+/set_date DD.MM.YYYY event_name [description] - добавить событие (старый формат)
+/list - список событий
+/all - все события
+/active - активные события
+/outdated - устаревшие события
+/help - справка
+/event_name - информация о событии`
+	sendMessage(ctx, b, update.Message.Chat.ID, helpText)
+}
+
+func handleDynamicOrUnknown(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService) {
+	if update.Message == nil {
+		logger.Debug("Получено обновление без сообщения")
+		return
+	}
+	logger.Info("Получено сообщение", zap.String("text", update.Message.Text))
+	if !strings.HasPrefix(update.Message.Text, "/") {
+		logger.Debug("Сообщение не является командой")
+		return
+	}
+	command := strings.TrimPrefix(update.Message.Text, "/")
+	if strings.Contains(command, "@") {
+		parts := strings.Split(command, "@")
+		command = parts[0]
+	}
+	logger.Info("Обработка команды", zap.String("command", command))
+	handleDynamicCommand(ctx, b, update, command, eventService)
+}
+
+func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *tgmodels.Update, name string, eventService *services.EventService) {
+	if update.Message == nil {
+		return
+	}
+
+	logger.Info("Поиск события",
+		zap.String("event_name", name),
+		zap.Int64("chat_id", update.Message.Chat.ID))
+	event, err := eventService.GetEvent(update.Message.Chat.ID, name)
+	if err != nil {
+		logger.Warn("Событие не найдено",
+			zap.String("event_name", name),
+			zap.Error(err))
+		sendMessage(ctx, b, update.Message.Chat.ID, fmt.Sprintf("Событие '%s' не найдено", name))
+		return
+	}
+
+	logger.Info("Найдено событие",
+		zap.String("event_name", event.Name),
+		zap.String("date", event.Date))
+	// Обновление статуса
+	eventService.UpdateEventStatus(update.Message.Chat.ID, name)
+
+	// Расчёт времени до события
+	parsedDate, err := models.ParseEventDate(event.Date)
+	if err != nil {
+		logger.Error("Ошибка парсинга даты события", zap.Error(err))
+		sendMessage(ctx, b, update.Message.Chat.ID, "Ошибка при расчете времени")
+		return
+	}
+
+	duration := time.Until(parsedDate)
+	days := int(duration.Hours() / 24)
+	hours := int(duration.Hours()) % 24
+	minutes := int(duration.Minutes()) % 60
+
+	message := fmt.Sprintf("Событие: %s\nДата: %s\n", event.Name, event.Date)
+	if event.Description != "" {
+		message += fmt.Sprintf("Описание: %s\n", event.Description)
+	}
+	if duration > 0 {
+		message += fmt.Sprintf("Осталось: %d дней, %d часов, %d минут", days, hours, minutes)
+	} else {
+		message += "Событие прошло"
+	}
+
+	sendMessage(ctx, b, update.Message.Chat.ID, message)
+}
+
+func sendMessage(ctx context.Context, b *bot.Bot, chatID int64, text string) {
+	b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: chatID,
+		Text:   text,
+	})
+}
+
+func loadExistingCommands(b *bot.Bot, eventService *services.EventService) {
+	// Загрузка всех событий из всех чатов
+	events, err := eventService.GetAllEvents()
+	if err != nil {
+		logger.Error("Ошибка при загрузке событий", zap.Error(err))
+		return
+	}
+
+	commands := []tgmodels.BotCommand{
+		{Command: "set_date", Description: "Добавить событие (/set_date DD.MM.YYYY name)"},
+		{Command: "list", Description: "Список событий"},
+		{Command: "all", Description: "Все события"},
+		{Command: "active", Description: "Активные события"},
+		{Command: "outdated", Description: "Устаревшие события"},
+		{Command: "help", Description: "Справка"},
+	}
+
+	// Добавление динамических команд из storage
+	for _, event := range events {
+		commands = append(commands, tgmodels.BotCommand{
+			Command:     event.Name,
+			Description: fmt.Sprintf("Информация о событии '%s'", event.Name),
+		})
+	}
+
+	logger.Info("Устанавливаем команды", zap.Int("count", len(commands)))
+	_, err = b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
+		Commands: commands,
+	})
+	if err != nil {
+		logger.Error("Ошибка при установке команд", zap.Error(err))
+	} else {
+		logger.Info("Команды успешно установлены")
+	}
+}
+
+func registerDynamicCommand(b *bot.Bot, eventService *services.EventService, name string) {
+	// Получение всех событий
+	events, err := eventService.GetAllEvents()
+	if err != nil {
+		logger.Error("Ошибка при получении событий", zap.Error(err))
+		return
+	}
+
+	commands := []tgmodels.BotCommand{
+		{Command: "set_date", Description: "Добавить событие (/set_date DD.MM.YYYY name)"},
+		{Command: "list", Description: "Список событий"},
+		{Command: "all", Description: "Все события"},
+		{Command: "active", Description: "Активные события"},
+		{Command: "outdated", Description: "Устаревшие события"},
+		{Command: "help", Description: "Справка"},
+	}
+
+	// Добавление всех событий как команд
+	for _, event := range events {
+		commands = append(commands, tgmodels.BotCommand{
+			Command:     event.Name,
+			Description: fmt.Sprintf("Информация о событии '%s'", event.Name),
+		})
+	}
+
+	logger.Info("Обновляем команды после добавления события",
+		zap.String("event_name", name),
+		zap.Int("total_commands", len(commands)))
+	_, err = b.SetMyCommands(context.Background(), &bot.SetMyCommandsParams{
+		Commands: commands,
+	})
+	if err != nil {
+		logger.Error("Ошибка при обновлении динамических команд", zap.Error(err))
+	} else {
+		logger.Info("Динамические команды успешно обновлены")
+	}
+}

@@ -1,5 +1,5 @@
 # Этап сборки
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Установка зависимостей
 RUN apk add --no-cache git
@@ -7,17 +7,17 @@ RUN apk add --no-cache git
 # Создание рабочей директории
 WORKDIR /app
 
-# Копируем исходный файл бота
-COPY main.go .
+# Копируем go.mod и go.sum для кэширования зависимостей
+COPY go.mod go.sum ./
 
-# Инициализируем модуль, если его нет (опционально)
-RUN go mod init murmansk-bot || true
-# Подключаем нужные зависимости
-RUN go get github.com/go-telegram/bot \
-           github.com/go-telegram/bot/models \
-           github.com/joho/godotenv
+# Загружаем зависимости
+RUN go mod download
+
+# Копируем исходный код
+COPY . .
+
 # Компиляция
-RUN go build -o murmansk-bot main.go
+RUN go build -o murmansk-bot ./cmd
 
 # Финальный образ (без компилятора)
 FROM alpine:latest
