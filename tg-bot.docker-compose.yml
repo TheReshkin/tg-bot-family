@@ -1,11 +1,15 @@
 services:
   murmansk-bot:
-    image: reshkin/murmansk-bot:latest # Используем тег latest, Watchtower будет проверять обновления
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: murmansk-bot
     restart: always
+    # environment:
+    #   - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     volumes:
+      - ./data:/app/data
       - .env:/app/.env
-      - ./data/:/app/data/ # Монтируем файл dates.json на хост
     networks:
       - bot-network
     labels:
@@ -22,7 +26,7 @@ services:
     environment:
       - WATCHTOWER_POLL_INTERVAL=30 # Интервал проверки обновлений (в секундах)
     command: --cleanup --label-enable # Удаляет старые образы и обновляет только контейнеры с метками
-
+    
 networks:
   bot-network:
     driver: bridge
