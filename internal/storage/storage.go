@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/TheReshkin/tg-bot-family/internal/config"
 	"github.com/TheReshkin/tg-bot-family/internal/models"
 )
 
@@ -16,6 +17,7 @@ type Storage interface {
 	GetEvents(chatID int64) ([]models.Event, error)
 	GetAllEvents() ([]models.Event, error)
 	GetEvent(chatID int64, name string) (*models.Event, error)
+	FindEventAcrossChats(name string, excludeChatID int64) (*models.Event, int64, error)
 	EventExists(chatID int64, name string) bool
 	GetUser(chatID, userID int64) (*models.User, error)
 	AddEventToUser(chatID, userID int64, event models.Event) error
@@ -140,7 +142,6 @@ func (s *JSONStorage) GetEvent(chatID int64, name string) (*models.Event, error)
 		return nil, err
 	}
 
-	// Сначала ищем в указанном чате
 	for _, chat := range data {
 		if chat.ChatID == chatID {
 			for _, event := range chat.Events {
@@ -150,17 +151,44 @@ func (s *JSONStorage) GetEvent(chatID int64, name string) (*models.Event, error)
 			}
 		}
 	}
+	return nil, errors.New("event not found")
+}
 
-	// Если не нашли в указанном чате, ищем во всех чатах
-	for _, chat := range data {
-		for _, event := range chat.Events {
-			if event.Name == name {
-				return &event, nil
+func (s *JSONStorage) FindEventAcrossChats(name string, excludeChatID int64) (*models.Event, int64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	data, err := s.loadData()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// First, try to find in the test chat (prioritize it for cross-chat searches)
+	testChatID := config.LoadTestChatID()
+	if excludeChatID != testChatID {
+		for _, chat := range data {
+			if chat.ChatID == testChatID {
+				for _, event := range chat.Events {
+					if event.Name == name {
+						return &event, testChatID, nil
+					}
+				}
 			}
 		}
 	}
 
-	return nil, errors.New("event not found")
+	// If not found in test chat, search other chats
+	for _, chat := range data {
+		if chat.ChatID != excludeChatID && chat.ChatID != testChatID {
+			for _, event := range chat.Events {
+				if event.Name == name {
+					return &event, chat.ChatID, nil
+				}
+			}
+		}
+	}
+
+	return nil, 0, errors.New("event not found")
 }
 
 func (s *JSONStorage) EventExists(chatID int64, name string) bool {

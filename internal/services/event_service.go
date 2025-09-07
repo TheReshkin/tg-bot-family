@@ -66,9 +66,7 @@ func (s *EventService) ListEvents(chatID int64) ([]models.Event, error) {
 	events, err := s.store.GetEvents(chatID)
 	if err != nil {
 		s.logger.Error("Ошибка получения событий", zap.Error(err))
-		return nil, err
 	}
-	s.logger.Debug("Найдено событий", zap.Int("count", len(events)))
 	return events, err
 }
 
@@ -93,6 +91,23 @@ func (s *EventService) GetEvent(chatID int64, name string) (*models.Event, error
 			zap.Error(err))
 	}
 	return event, err
+}
+
+func (s *EventService) FindEventAcrossChats(name string, excludeChatID int64) (*models.Event, int64, error) {
+	s.logger.Debug("Поиск события в других чатах",
+		zap.String("event_name", name),
+		zap.Int64("exclude_chat_id", excludeChatID))
+	event, chatID, err := s.store.FindEventAcrossChats(name, excludeChatID)
+	if err != nil {
+		s.logger.Warn("Событие не найдено в других чатах",
+			zap.String("event_name", name),
+			zap.Error(err))
+	} else {
+		s.logger.Info("Событие найдено в другом чате",
+			zap.String("event_name", name),
+			zap.Int64("found_in_chat_id", chatID))
+	}
+	return event, chatID, err
 }
 
 func (s *EventService) UpdateEventStatus(chatID int64, name string) error {

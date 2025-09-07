@@ -42,7 +42,7 @@ func TestParseDateWithTime(t *testing.T) {
 	}
 
 	// Загружаем часовой пояс для проверки
-	location, _ := time.LoadLocation("Europe/Moscow")
+	location := getTestLocation(t)
 	expected := time.Date(2025, 9, 7, 0, 0, 0, 0, location)
 	if !parsed.Equal(expected) {
 		t.Errorf("Ожидалось %v, получено %v", expected, parsed)
@@ -57,7 +57,7 @@ func TestParseDateWithoutTime(t *testing.T) {
 	}
 
 	// Загружаем часовой пояс для проверки
-	location, _ := time.LoadLocation("Europe/Moscow")
+	location := getTestLocation(t)
 	expected := time.Date(2025, 12, 31, 0, 0, 0, 0, location)
 	if !parsed.Equal(expected) {
 		t.Errorf("Ожидалось %v, получено %v", expected, parsed)
@@ -72,7 +72,7 @@ func TestParseDateShortFormat(t *testing.T) {
 	}
 
 	// Загружаем часовой пояс для проверки
-	location, _ := time.LoadLocation("Europe/Moscow")
+	location := getTestLocation(t)
 	expected := time.Date(2025, 9, 7, 0, 0, 0, 0, location)
 	if !parsed.Equal(expected) {
 		t.Errorf("Ожидалось %v, получено %v", expected, parsed)
@@ -87,7 +87,7 @@ func TestParseDateOldFormat(t *testing.T) {
 	}
 
 	// Загружаем часовой пояс для проверки
-	location, _ := time.LoadLocation("Europe/Moscow")
+	location := getTestLocation(t)
 	expected := time.Date(2025, 12, 31, 0, 0, 0, 0, location)
 	if !parsed.Equal(expected) {
 		t.Errorf("Ожидалось %v, получено %v", expected, parsed)
