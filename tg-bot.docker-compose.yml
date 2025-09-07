@@ -3,14 +3,28 @@ services:
     build: .
     container_name: murmansk-bot
     restart: always
-    environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    # environment:
+    #   - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     volumes:
       - ./data:/app/data
       - .env:/app/.env
     networks:
       - bot-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true" # Включаем отслеживание для этого контейнера
 
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower-tg-bot-murmansk
+    depends_on:
+      - murmansk-bot
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=30 # Интервал проверки обновлений (в секундах)
+    command: --cleanup --label-enable # Удаляет старые образы и обновляет только контейнеры с метками
+    
 networks:
   bot-network:
     driver: bridge
