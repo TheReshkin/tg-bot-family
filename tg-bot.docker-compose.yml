@@ -1,6 +1,8 @@
 services:
   murmansk-bot:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: murmansk-bot
     restart: always
     # environment:
