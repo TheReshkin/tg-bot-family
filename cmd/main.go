@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TheReshkin/tg-bot-family/internal/config"
 	"github.com/TheReshkin/tg-bot-family/internal/models"
 	"github.com/TheReshkin/tg-bot-family/internal/services"
 	"github.com/TheReshkin/tg-bot-family/internal/storage"
@@ -183,7 +184,7 @@ func handleList(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventS
 	}
 
 	// Если это не тестовый чат, добавляем события из тестового чата
-	const testChatID int64 = 332288278
+	testChatID := config.LoadTestChatID()
 	if update.Message.Chat.ID != testChatID {
 		testEvents, err := eventService.ListEvents(testChatID)
 		if err == nil {
@@ -226,7 +227,7 @@ func handleActive(ctx context.Context, b *bot.Bot, update *tgmodels.Update, even
 	}
 
 	// Если это не тестовый чат, добавляем события из тестового чата
-	const testChatID int64 = 332288278
+	testChatID := config.LoadTestChatID()
 	if update.Message.Chat.ID != testChatID {
 		testEvents, err := eventService.ListEvents(testChatID)
 		if err == nil {
@@ -272,7 +273,7 @@ func handleOutdated(ctx context.Context, b *bot.Bot, update *tgmodels.Update, ev
 	}
 
 	// Если это не тестовый чат, добавляем события из тестового чата
-	const testChatID int64 = 332288278
+	testChatID := config.LoadTestChatID()
 	if update.Message.Chat.ID != testChatID {
 		testEvents, err := eventService.ListEvents(testChatID)
 		if err == nil {
@@ -364,13 +365,15 @@ func handleDynamicCommand(ctx context.Context, b *bot.Bot, update *tgmodels.Upda
 	// Сначала ищем в текущем чате
 	event, err := eventService.GetEvent(update.Message.Chat.ID, name)
 	if err != nil {
-		// Если не найдено в текущем чате, ищем в тестовом чате (332288278)
-		const testChatID int64 = 332288278
-		if update.Message.Chat.ID != testChatID {
-			logger.Info("Событие не найдено в текущем чате, ищем в тестовом",
+		// Если не найдено в текущем чате, ищем в других чатах
+		logger.Info("Событие не найдено в текущем чате, ищем в других чатах",
+			zap.String("event_name", name))
+		var foundChatID int64
+		event, foundChatID, err = eventService.FindEventAcrossChats(name, update.Message.Chat.ID)
+		if err == nil {
+			logger.Info("Событие найдено в другом чате",
 				zap.String("event_name", name),
-				zap.Int64("test_chat_id", testChatID))
-			event, err = eventService.GetEvent(testChatID, name)
+				zap.Int64("found_in_chat_id", foundChatID))
 		}
 	}
 
