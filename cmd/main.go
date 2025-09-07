@@ -65,19 +65,19 @@ func main() {
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/set_date", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
 		handleSetDate(ctx, b, update, eventService, userService)
 	})
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/list", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/list", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
 		handleList(ctx, b, update, eventService)
 	})
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/all", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/all", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
 		handleAll(ctx, b, update, eventService)
 	})
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/active", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/active", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
 		handleActive(ctx, b, update, eventService)
 	})
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/outdated", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/outdated", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
 		handleOutdated(ctx, b, update, eventService)
 	})
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/help", bot.MatchTypeExact, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/help", bot.MatchTypePrefix, func(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
 		handleHelp(ctx, b, update)
 	})
 
@@ -91,12 +91,27 @@ func main() {
 	b.Start(context.Background())
 }
 
+// normalizeCommand удаляет суффикс @bot_username из команды
+func normalizeCommand(text string) string {
+	if strings.Contains(text, "@") {
+		parts := strings.Split(text, "@")
+		return parts[0]
+	}
+	return text
+}
+
 func handleSetDate(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService, userService *services.UserService) {
 	if update.Message == nil {
 		return
 	}
 
-	parts := strings.Fields(update.Message.Text)
+	// Нормализуем команду
+	command := normalizeCommand(update.Message.Text)
+	if !strings.HasPrefix(command, "/set_date") {
+		return // Не наша команда
+	}
+
+	parts := strings.Fields(command)
 	if len(parts) < 3 {
 		sendMessage(ctx, b, update.Message.Chat.ID, "Используйте формат:\n/set_date YYYY-MM-DD HH:MM event_name [description]\n/set_date YYYY-MM-DD event_name [description]\n/set_date DD.MM.YYYY event_name [description]")
 		return
@@ -154,6 +169,12 @@ func handleList(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventS
 		return
 	}
 
+	// Нормализуем команду
+	command := normalizeCommand(update.Message.Text)
+	if command != "/list" {
+		return // Не наша команда
+	}
+
 	// Получаем события из текущего чата
 	events, err := eventService.ListEvents(update.Message.Chat.ID)
 	if err != nil {
@@ -189,6 +210,12 @@ func handleAll(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventSe
 func handleActive(ctx context.Context, b *bot.Bot, update *tgmodels.Update, eventService *services.EventService) {
 	if update.Message == nil {
 		return
+	}
+
+	// Нормализуем команду
+	command := normalizeCommand(update.Message.Text)
+	if command != "/active" {
+		return // Не наша команда
 	}
 
 	// Получаем события из текущего чата
@@ -231,6 +258,12 @@ func handleOutdated(ctx context.Context, b *bot.Bot, update *tgmodels.Update, ev
 		return
 	}
 
+	// Нормализуем команду
+	command := normalizeCommand(update.Message.Text)
+	if command != "/outdated" {
+		return // Не наша команда
+	}
+
 	// Получаем события из текущего чата
 	events, err := eventService.ListEvents(update.Message.Chat.ID)
 	if err != nil {
@@ -269,6 +302,12 @@ func handleOutdated(ctx context.Context, b *bot.Bot, update *tgmodels.Update, ev
 func handleHelp(ctx context.Context, b *bot.Bot, update *tgmodels.Update) {
 	if update.Message == nil {
 		return
+	}
+
+	// Нормализуем команду
+	command := normalizeCommand(update.Message.Text)
+	if command != "/help" {
+		return // Не наша команда
 	}
 
 	helpText := `Команды:
