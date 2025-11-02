@@ -35,9 +35,9 @@ func main() {
 		logger.Error("Ошибка при загрузке .env файла", zap.Error(err))
 	}
 
-	telegramToken := os.Getenv("TELEGRAM_TOKEN")
+	telegramToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if telegramToken == "" {
-		logger.Fatal("TELEGRAM_TOKEN не задан")
+		logger.Fatal("TELEGRAM_BOT_TOKEN не задан")
 	}
 
 	// Инициализация бота
